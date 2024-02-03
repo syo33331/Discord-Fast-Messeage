@@ -93,7 +93,6 @@ func sendMessage(channelID, message, token string, count int, wg *sync.WaitGroup
 	fmt.Printf("Message %d sent with token: StatusCode = %d\n", count, resp.StatusCode)
 }
 
-// generateRandomString は指定された長さのランダムな英数字の文字列を生成します。
 func generateRandomString(n int) string {
 	const letters = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
 	bytes := make([]byte, n)
