@@ -2,107 +2,124 @@ package main
 
 import (
 	"bufio"
-	"bytes"
-	"crypto/rand"
 	"fmt"
 	"io/ioutil"
+	"math/rand"
 	"net/http"
 	"os"
-	"strconv"
 	"strings"
 	"sync"
+	"time"
 )
 
+const charset = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+
 func main() {
-	reader := bufio.NewReader(os.Stdin)
-
-	fmt.Print("Enter Channel ID: ")
-	channelID, _ := reader.ReadString('\n')
-	channelID = strings.TrimSpace(channelID)
-
-	fmt.Print("Enter the message: ")
-	message, _ := reader.ReadString('\n')
-	message = strings.TrimSpace(message)
-
-	fmt.Print("Add random 3-character alphanumeric to each message? (yes/no): ")
-	addRandomStr, _ := reader.ReadString('\n')
-	addRandomStr = strings.TrimSpace(addRandomStr)
-
-	fmt.Print("Enter the number of times to send the message: ")
-	timesStr, _ := reader.ReadString('\n')
-	timesStr = strings.TrimSpace(timesStr)
-	times, err := strconv.Atoi(timesStr)
-	if err != nil {
-		fmt.Println("Invalid number")
-		return
-	}
-
 	tokens, err := readTokens("token.txt")
 	if err != nil {
-		fmt.Println("Error reading tokens:", err)
+		fmt.Println("トークンファイルを読み込めません:", err)
 		return
 	}
 
+	var channelID string
+	var messageContent string
+	var addRandomString bool
+        
+	fmt.Print("Created By Syo3333\n")
+
+	fmt.Print("チャンネルIDを入力してください: ")
+	_, _ = fmt.Scanln(&channelID)
+
+	fmt.Print("送信するメッセージを入力してください: ")
+	scanner := bufio.NewScanner(os.Stdin)
+	scanner.Scan()
+	messageContent = scanner.Text()
+
+	fmt.Print("メッセージの最後に3文字のランダムな英数字を追加しますか？ (y/n): ")
+	var consent string
+	_, _ = fmt.Scanln(&consent)
+	addRandomString = strings.ToLower(consent) == "y"
+
+	var messageCount int
+	fmt.Print("送信回数を入力してください: ")
+	_, _ = fmt.Scanln(&messageCount)
+
 	var wg sync.WaitGroup
-	tokenCount := len(tokens)
-	for i := 0; i < times; i++ {
-		modifiedMessage := message
-		if strings.ToLower(addRandomStr) == "yes" {
-			randomStr := generateRandomString(3)
-			modifiedMessage += randomStr 
-		}
+
+	for _, token := range tokens {
 		wg.Add(1)
-		go sendMessage(channelID, modifiedMessage, tokens[i%tokenCount], i+1, &wg)
+		go func(token string) {
+			defer wg.Done()
+			for i := 0; i < messageCount; i++ {
+				finalMessage := messageContent
+				if addRandomString {
+					randomString := generateRandomString(3)
+					finalMessage += " " + randomString
+				}
+				success, err := postMessage(token, channelID, finalMessage)
+				if success {
+					fmt.Printf("[✓]Success %s\n", token[:10])
+				} else {
+					fmt.Printf("[✗]Failed %s - %s\n", token[:10], err)
+				}
+			}
+		}(token)
 	}
 
 	wg.Wait()
-	fmt.Println("All messages sent")
 }
 
-func readTokens(filePath string) ([]string, error) {
-	fileContent, err := ioutil.ReadFile(filePath)
+func readTokens(filename string) ([]string, error) {
+	file, err := os.Open(filename)
 	if err != nil {
 		return nil, err
 	}
-	tokens := strings.Split(strings.TrimSpace(string(fileContent)), "\n")
+	defer file.Close()
+
+	var tokens []string
+	scanner := bufio.NewScanner(file)
+	for scanner.Scan() {
+		token := scanner.Text()
+		tokens = append(tokens, token)
+	}
+
+	if err := scanner.Err(); err != nil {
+		return nil, err
+	}
+
 	return tokens, nil
 }
 
-func sendMessage(channelID, message, token string, count int, wg *sync.WaitGroup) {
-	defer wg.Done()
-
+func postMessage(token, channelID, content string) (bool, error) {
 	url := fmt.Sprintf("https://discord.com/api/v9/channels/%s/messages", channelID)
-	content := fmt.Sprintf(`{"content": "%s"}`, message)
-	req, err := http.NewRequest("POST", url, bytes.NewBuffer([]byte(content)))
+	payload := fmt.Sprintf(`{"content":"%s"}`, content)
+	req, err := http.NewRequest("POST", url, strings.NewReader(payload))
 	if err != nil {
-		fmt.Println("Error creating request:", err)
-		return
+		return false, err
 	}
-
 	req.Header.Set("Authorization", token)
 	req.Header.Set("Content-Type", "application/json")
 
 	client := &http.Client{}
 	resp, err := client.Do(req)
 	if err != nil {
-		fmt.Println("Error sending request:", err)
-		return
+		return false, err
 	}
 	defer resp.Body.Close()
 
-	fmt.Printf("Message %d sent with token: StatusCode = %d\n", count, resp.StatusCode)
+	_, err = ioutil.ReadAll(resp.Body)
+	if err != nil {
+		return false, err
+	}
+
+	return resp.StatusCode == http.StatusOK, nil
 }
 
-func generateRandomString(n int) string {
-	const letters = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
-	bytes := make([]byte, n)
-	_, err := rand.Read(bytes)
-	if err != nil {
-		fmt.Println("Error generating random string:", err)
-		return ""
+func generateRandomString(length int) string {
+	rand.Seed(time.Now().UnixNano())
+	b := make([]byte, length)
+	for i := range b {
+		b[i] = charset[rand.Intn(len(charset))]
 	}
-	for i, b := range bytes {
-		bytes[i] = letters[b%byte(len(letters))]
-	}
-	return string(bytes)
+	return string(b)
 }
