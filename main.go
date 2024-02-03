@@ -49,7 +49,7 @@ func main() {
 		modifiedMessage := message
 		if strings.ToLower(addRandomStr) == "yes" {
 			randomStr := generateRandomString(3)
-			modifiedMessage += randomStr // ランダムな文字列をメッセージの最後に追加
+			modifiedMessage += randomStr 
 		}
 		wg.Add(1)
 		go sendMessage(channelID, modifiedMessage, tokens[i%tokenCount], i+1, &wg)
